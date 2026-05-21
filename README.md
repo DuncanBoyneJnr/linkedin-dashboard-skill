@@ -67,6 +67,12 @@ Restart Claude Code, then trigger the skill by saying any of:
 3. Repeat for each 90-day window going back through your posting history
 4. Drop all `.xlsx` files into your project folder
 
+## Full walkthrough
+
+For a detailed explanation of how the pipeline works — data sources, the follower reconstruction logic, what each dashboard panel shows, and the quadrant analysis — read the full post:
+
+[How I Built a LinkedIn Analytics Dashboard with Claude Code](https://www.duncanboyne.co.uk/blog/linkedin-analytics-dashboard-claude-code)
+
 ## Licence
 
 MIT
