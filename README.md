@@ -67,11 +67,6 @@ Restart Claude Code, then trigger the skill by saying any of:
 3. Repeat for each 90-day window going back through your posting history
 4. Drop all `.xlsx` files into your project folder
 
-## Works alongside
-
-- **post-writer** skill — drafts any of the 5 recommendations as a LinkedIn post in your voice
-- **voice-builder** skill — builds the `voice.md` file the post-writer references
-
 ## Licence
 
 MIT
