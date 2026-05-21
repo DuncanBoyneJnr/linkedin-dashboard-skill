@@ -1,0 +1,21 @@
+# Generated data files
+analytics_data.json
+analytics_full.json
+scatter_compact.json
+dashboard.html
+generate_dashboard.js
+
+# LinkedIn exports
+Content_*.xlsx
+about-me.md
+voice.md
+
+# Downloaded chart libraries
+react.min.js
+react-dom.min.js
+prop-types.min.js
+recharts.min.js
+
+# OS
+.DS_Store
+Thumbs.db
