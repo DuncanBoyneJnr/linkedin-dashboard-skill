@@ -63,9 +63,10 @@ Restart Claude Code, then trigger the skill by saying any of:
 
 **LinkedIn Analytics export**
 1. Go to [linkedin.com/analytics/creator](https://linkedin.com/analytics/creator)
-2. Set a 90-day date range and click Export
-3. Repeat for each 90-day window going back through your posting history
-4. Drop all `.xlsx` files into your project folder
+2. Set the widest date range LinkedIn allows and click Export (the current export covers the full ~13-month window in one file)
+3. Drop the `.xlsx` into your project folder (both `AggregateAnalytics_*` and older `Content_*` files are supported)
+
+> **The export is a rolling window — it only reaches back about 13 months.** The skill keeps a persistent `analytics_archive.json` and merges each new export *into* it, so history older than the window is never lost. **Keep every export you download:** once dates age out of LinkedIn's window, an old file may be your only copy of them. Re-run the skill whenever you have a fresh export and it accumulates rather than replaces.
 
 ## Full walkthrough
 

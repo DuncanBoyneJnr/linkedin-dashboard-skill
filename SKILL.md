@@ -39,12 +39,32 @@ Go straight to Step 1. Do not summarise the skill.
 Look in the current project folder for:
 
 1. **Apify posts file** — a JSON file containing an array of posts with fields like `stats`, `posted_at`, `text`, `post_type`. Commonly named something like `*-all-posts.json` or `linkedin-posts.json`.
-2. **LinkedIn Analytics exports** — one or more xlsx files named `Content_*.xlsx` with sheets: DISCOVERY, ENGAGEMENT, TOP POSTS, FOLLOWERS, DEMOGRAPHICS.
-3. **about-me.md** — a file describing who the user is, their audience, and their content pillars.
+2. **LinkedIn Analytics exports** — one or more xlsx files in **two possible formats**, both with sheets DISCOVERY, ENGAGEMENT, TOP POSTS, FOLLOWERS, DEMOGRAPHICS:
+   - **Old format:** filenames start with `Content_` (numbers stored as integers; demographics percentages as decimals).
+   - **New format (LinkedIn's current export):** filenames start with `AggregateAnalytics_` (numbers stored as **text strings**; demographics percentages as `"2%"` / `"< 1%"` strings). LinkedIn switched to this format in 2026.
+   - Exports usually download to the user's **Downloads** folder, not the project folder. Check both.
+3. **A persistent archive** — `analytics_archive.json` if a previous run created one. **This is the source of truth, not the raw exports.** See the accumulation rule below.
+4. **about-me.md** — a file describing who the user is, their audience, and their content pillars.
 
 Report what was found and what is missing. Then work through any missing items in order: Step 2 (Apify) → Step 3 (Analytics exports) → Step 4 (about-me.md) → Step 5 (build).
 
-If all three exist, skip to Step 5.
+If the analytics data, an Apify file, and about-me.md all exist, skip to Step 5.
+
+---
+
+## CRITICAL: Accumulate, never replace
+
+LinkedIn Analytics exports are a **rolling window** — the current export reaches back roughly 13 months and no further. Every new export silently drops the oldest dates off the back. If you build the dashboard from only the latest export, all history older than that window is permanently lost.
+
+Therefore the skill maintains a **persistent archive** (`analytics_archive.json`) that is merged forward, never overwritten:
+
+- **Seed** from the existing archive (if one exists) so aged-out dates survive.
+- **Merge** every export found (old OR new format) by **date key**.
+- On overlap, **keep the higher value** — LinkedIn revises recent numbers upward as late engagement lands.
+- **Never delete** a date that is in the archive but absent from the current export.
+- Always **back up** the existing archive before writing (e.g. `analytics_archive.backup-YYYYMMDD.json`).
+
+This means users should keep every export they ever download — old `Content_*.xlsx` files are often the only copy of their oldest history once those dates age out of LinkedIn's window.
 
 ---
 
@@ -80,14 +100,11 @@ Tell the user:
 >
 > 1. Go to **linkedin.com/analytics/creator** (you must be a creator or have a business page).
 > 2. In the top right, you will see a date range selector and an **Export** button.
-> 3. Export the following date ranges — each export covers a maximum period, so you need multiple to get full history:
->    - **Last 90 days** (most recent data)
->    - **The 90 days before that** (overlap slightly — LinkedIn deduplicates)
->    - Keep going back until you have covered your full posting history
-> 4. Each file downloads as `Content_STARTDATE_ENDDATE_YourName.xlsx`.
-> 5. Drop all the xlsx files into this project folder.
+> 3. Set the **widest date range LinkedIn allows** and click Export. The current export covers the full available window (about 13 months) in a single file.
+> 4. The file downloads as `AggregateAnalytics_YourName_STARTDATE_ENDDATE.xlsx` (new format) or `Content_..._YourName.xlsx` (older format). Either works.
+> 5. Leave it in **Downloads** or drop it into this project folder — the skill checks both.
 >
-> **Tip:** If you only have one or two exports that is fine. More date ranges give more complete impression and follower history.
+> **Important:** The export only reaches back about 13 months. If you have run this before, the skill merges the new file *into* your existing archive rather than replacing it, so older history is preserved. **Keep every export you download** — old `Content_*.xlsx` files may be the only copy of your oldest data once those dates age out of LinkedIn's window.
 
 Wait for the user to confirm the files are in place.
 
@@ -141,25 +158,31 @@ Confirm the file was created before moving to Step 5.
 
 Now build the full analytics dashboard. This requires Python (openpyxl) and Node.js. Check both are available before proceeding.
 
-### 5a. Extract and merge the Analytics xlsx data
+### 5a. Extract and merge into the persistent archive
 
-Use Python with openpyxl to read all `Content_*.xlsx` files in the project folder. Merge the following across all files:
+Use Python with openpyxl to read **every** `Content_*.xlsx` and `AggregateAnalytics_*.xlsx` file found in the project folder **and the user's Downloads folder**. First, if an `analytics_archive.json` already exists, **back it up** and **seed the merge from it** so previously-captured dates that have since aged out of LinkedIn's export window are preserved.
+
+**Format differences you must handle (critical):**
+- New-format files (`AggregateAnalytics_*`) store **all numbers as text strings** (`"6530"`, not `6530`). Coerce every numeric cell with a string-safe helper — do not call `int(cell)` directly or it will crash / misread.
+- New-format DEMOGRAPHICS percentages are strings like `"2%"` and `"< 1%"`. Strip `<` and `%`, then divide by 100. Do **not** gate on `isinstance(cell, (int, float))` — that silently zeros every new-format demographic.
+- New-format FOLLOWERS total snapshot reads `"Total followers on 6/5/2026"` (no colon). Extract the date with a regex, not `split(":")`.
 
 **ENGAGEMENT sheet** (Date, Impressions, Engagements — daily rows):
-- Use date as the merge key. Where dates overlap between files, keep the higher value.
+- Merge by date key. Where dates overlap across files or the archive, **keep the higher value**.
 
 **FOLLOWERS sheet** (Date, New followers + total snapshot):
 - Same date-merge approach.
-- Capture all follower total snapshots (e.g. "Total followers on 8/21/2025: 5086") for calibrating cumulative totals.
+- Capture all follower total snapshots for calibrating cumulative totals.
 
-**TOP POSTS sheet** (two tables: by engagements and by impressions):
-- Some files have one combined sheet, some have two separate sheets ("TOP POSTS Eng" and "TOP POSTS Imp"). Handle both formats.
+**TOP POSTS sheet** (two tables in one sheet, separated by a blank column D — cols A–C by engagements, cols E–G by impressions):
 - Merge on post URL. Keep the highest engagement and impression values seen across files.
 
-**DEMOGRAPHICS sheet** (category, label, percentage):
+**DEMOGRAPHICS sheet** (category, value, percentage):
 - Use the file with the widest date range.
 
-Write the merged output to `analytics_data.json`.
+**Never drop a date** that is in the archive but absent from the current export.
+
+Write the merged output to **`analytics_archive.json`** (the persistent source of truth) and a working copy `analytics_data.json`. After writing, verify against the backup: 0 dates lost, no impression value regressions, demographics percentages non-zero.
 
 Then build derived datasets:
 - **Monthly aggregates**: sum impressions, engagements, new followers per month. Calculate engagement rate (engagements / impressions).
