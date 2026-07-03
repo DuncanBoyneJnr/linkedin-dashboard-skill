@@ -1,58 +1,82 @@
-# LinkedIn Dashboard Skill for Claude Code
+# LinkedIn Dashboard Skill
 
-A Claude Code skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
+A self-contained Hermes skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
+
+This is a **multi-file Hermes-native fork** of the [DuncanBoyne/linkedin-dashboard-skill](https://github.com/DuncanBoyne/linkedin-dashboard-skill), heavily expanded with:
+
+- Pre-built Python and Node.js scripts (no inline code generation needed)
+- Company page analytics support (competitor comparison tables)
+- Dual-format support (old `Content_*` + new `AggregateAnalytics_*` exports)
+- Verus-data export format support
+- Data segregation architecture (personal vs company data in separate files)
+- Accumulation/archive pattern (never lose aged-out history)
+- xlrd fallback for old binary `.xls` files
+- All parsing pitfalls documented
 
 ## What it does
 
-Drop your data in a project folder, say **"linkedin dashboard"**, and Claude guides you through the full pipeline:
+Drop your data in a project folder, run the skill, and it guides you through the full pipeline:
 
 1. Collects your Apify posts export (per-post reactions, comments, reposts, format)
 2. Collects your LinkedIn Analytics exports (impressions, follower counts, demographics)
-3. Creates your `about-me.md` (personalises the recommendations)
-4. Builds a self-contained `dashboard.html` — no internet required after generation
-5. Writes a strategic analysis with top post patterns, audience profile, and content verdict
+3. Collects company page analytics (optional)
+4. Creates your `about-me.md` (personalises the recommendations)
+5. Runs `scripts/extract.py` to parse and merge all exports into a persistent archive
+6. Runs `scripts/generate_dashboard.js` to produce a self-contained `dashboard.html`
+7. Writes a strategic analysis with top post patterns, audience profile, and content verdict
 
 ## Dashboard panels
 
-- Headline cards: impressions, engagement rate, follower count, total posts
-- Monthly trend (tabbed): impressions, engagement rate, new followers
-- Follower growth: weekly cumulative area chart + new followers per week
-- Day-of-week performance: which days get the most reactions and engagements
-- Content format comparison: image vs carousel vs video vs article vs text
-- Post scatter plot: quadrant analysis (Stars / Viral-Shallow / Niche-Gold / Underperformers)
-- Demographics: job titles, industries, seniority, company size, locations
-- Top 10 posts table: impressions, engagements, engagement rate, clickable links
+- **Headline cards:** impressions, engagement rate, follower count, total posts
+- **Monthly trend (tabbed):** impressions, engagement rate, new followers
+- **Follower growth:** weekly cumulative area chart + new followers per week
+- **Post performance scatter:** quadrant analysis (Stars / Viral-Shallow / Niche-Gold / Underperformers)
+- **Audience demographics:** job titles, industries, seniority, company size, locations
+- **Company page analytics:** competitor comparison table (if data available)
+- **Top 10 posts table:** impressions, engagements, engagement rate, clickable links
 
 ## Requirements
 
-- [Claude Code](https://claude.ai/code)
-- Python 3 with openpyxl (`pip install openpyxl`)
+- Python 3 with `openpyxl`, `python-dateutil`, `xlrd` (`pip3 install openpyxl python-dateutil xlrd`)
 - Node.js (any recent version)
 - A free [Apify](https://apify.com) account for the posts scrape
 
 ## Installation
 
-```bash
-# Mac / Linux
-mkdir -p ~/.claude/skills/linkedin-dashboard
-curl -o ~/.claude/skills/linkedin-dashboard/SKILL.md \
-  https://raw.githubusercontent.com/DuncanBoyneJnr/linkedin-dashboard-skill/main/SKILL.md
+### As a Hermes skill
 
-# Windows (PowerShell)
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\linkedin-dashboard"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/DuncanBoyneJnr/linkedin-dashboard-skill/main/SKILL.md" `
-  -OutFile "$env:USERPROFILE\.claude\skills\linkedin-dashboard\SKILL.md"
+```bash
+hermes skills install https://raw.githubusercontent.com/Verus-Data/linkedin-dashboard-skill/main/SKILL.md --name linkedin-dashboard --category data-science --yes
 ```
 
-Or download `SKILL.md` manually and place it at:
-- Mac/Linux: `~/.claude/skills/linkedin-dashboard/SKILL.md`
-- Windows: `%USERPROFILE%\.claude\skills\linkedin-dashboard\SKILL.md`
+### As a standalone project
 
-Restart Claude Code, then trigger the skill by saying any of:
-- `linkedin dashboard`
-- `build my dashboard`
-- `analyse my linkedin`
-- `full linkedin analysis`
+```bash
+git clone https://github.com/Verus-Data/linkedin-dashboard-skill.git
+cd linkedin-dashboard-skill
+pip3 install openpyxl python-dateutil xlrd
+```
+
+## Quick start
+
+```bash
+# 1. Drop your LinkedIn Analytics exports and Apify JSON into a project folder
+# 2. Run the extraction script
+python3 scripts/extract.py /path/to/project
+
+# 3. Download chart libraries (one-time)
+cd /path/to/project
+curl -sL https://unpkg.com/react@18/umd/react.production.min.js -o react.min.js
+curl -sL https://unpkg.com/react-dom@18/umd/react-dom.production.min.js -o react-dom.min.js
+curl -sL https://unpkg.com/prop-types@15.8.1/prop-types.min.js -o prop-types.min.js
+curl -sL https://unpkg.com/recharts@2.12.7/umd/Recharts.js -o recharts.min.js
+
+# 4. Generate the dashboard
+node scripts/generate_dashboard.js /path/to/project
+
+# 5. Open it
+open /path/to/project/dashboard.html
+```
 
 ## Data sources
 
@@ -63,16 +87,31 @@ Restart Claude Code, then trigger the skill by saying any of:
 
 **LinkedIn Analytics export**
 1. Go to [linkedin.com/analytics/creator](https://linkedin.com/analytics/creator)
-2. Set the widest date range LinkedIn allows and click Export (the current export covers the full ~13-month window in one file)
-3. Drop the `.xlsx` into your project folder (both `AggregateAnalytics_*` and older `Content_*` files are supported)
+2. Set the widest date range and click Export
+3. Drop the `.xlsx` into your project folder
 
-> **The export is a rolling window — it only reaches back about 13 months.** The skill keeps a persistent `analytics_archive.json` and merges each new export *into* it, so history older than the window is never lost. **Keep every export you download:** once dates age out of LinkedIn's window, an old file may be your only copy of them. Re-run the skill whenever you have a fresh export and it accumulates rather than replaces.
+**Company page analytics (optional)**
+1. Go to [linkedin.com/analytics/page](https://linkedin.com/analytics/page)
+2. Export and drop the `*competitor_analytics*.xlsx` into your project folder
 
-## Full walkthrough
+> **The export is a rolling window — it only reaches back about 13 months.** The skill keeps a persistent `analytics_archive.json` and merges each new export *into* it, so history older than the window is never lost. **Keep every export you download.**
 
-For a detailed explanation of how the pipeline works — data sources, the follower reconstruction logic, what each dashboard panel shows, and the quadrant analysis — read the full post:
+## Repository structure
 
-[How I Built a LinkedIn Analytics Dashboard with Claude Code](https://www.duncanboyne.co.uk/blog/linkedin-analytics-dashboard-claude-code)
+```
+linkedin-dashboard-skill/
+├── SKILL.md                    # Self-contained Hermes skill
+├── README.md                   # This file
+├── LICENSE                     # MIT
+├── .gitignore
+├── scripts/
+│   ├── extract.py              # Parse XLSX exports → JSON archive
+│   └── generate_dashboard.js   # JSON → self-contained HTML dashboard
+└── references/
+    ├── analytics-tools-landscape.md    # Survey of open-source LinkedIn analytics tools
+    ├── verus-data-format.md            # Verus-data export format reference
+    └── competitor-analytics-format.md  # Company page analytics format reference
+```
 
 ## Licence
 
