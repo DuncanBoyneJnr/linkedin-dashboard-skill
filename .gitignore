@@ -1,12 +1,19 @@
 # Generated data files
 analytics_data.json
 analytics_full.json
+analytics_archive.json
+analytics_archive.backup-*.json
 scatter_compact.json
-dashboard.html
-generate_dashboard.js
+dashboard*.html
 
 # LinkedIn exports
+# Users should place their downloaded LinkedIn exports into a dedicated subdirectory
+# (e.g., ./data/) to keep the project root clean. The extract.py script accepts
+# a project directory argument and scans all .xlsx/.xls files within it.
 Content_*.xlsx
+AggregateAnalytics_*.xlsx
+*competitor_analytics*.xlsx
+*competitor*.xlsx
 about-me.md
 voice.md
 
@@ -19,3 +26,7 @@ recharts.min.js
 # OS
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
