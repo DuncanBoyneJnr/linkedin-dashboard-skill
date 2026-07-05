@@ -1,10 +1,10 @@
-# Verus-Data Format Reference
+# Company Page Analytics Format Reference
 
 LinkedIn's newer export format for company page analytics. Files may be old binary `.xls` (CDFV2) — handled via xlrd fallback in `extract.py`.
 
 ## File Detection
 
-Files matching `verus-data_*.xls` or `verus-data_*.xlsx` are detected by the glob patterns in `extract.py:main()`.
+Files are detected by their sheet names, not by filename patterns. The extractor scans all `.xlsx` and `.xls` files in the project directory and identifies this format by the presence of sheets like "New followers", "Metrics", "All posts", and "Visitor metrics".
 
 ## Sheet Structure
 

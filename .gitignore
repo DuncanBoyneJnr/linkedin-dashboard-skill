@@ -7,12 +7,13 @@ scatter_compact.json
 dashboard*.html
 
 # LinkedIn exports
+# Users should place their downloaded LinkedIn exports into a dedicated subdirectory
+# (e.g., ./data/) to keep the project root clean. The extract.py script accepts
+# a project directory argument and scans all .xlsx/.xls files within it.
 Content_*.xlsx
 AggregateAnalytics_*.xlsx
 *competitor_analytics*.xlsx
 *competitor*.xlsx
-verus-data_*.xls
-verus-data_*.xlsx
 about-me.md
 voice.md
 

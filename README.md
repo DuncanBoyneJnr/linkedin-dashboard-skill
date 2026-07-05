@@ -1,13 +1,13 @@
 # LinkedIn Dashboard Skill
 
-A self-contained Hermes skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
+A self-contained skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
 
-This is a **multi-file Hermes-native fork** of the [DuncanBoyne/linkedin-dashboard-skill](https://github.com/DuncanBoyne/linkedin-dashboard-skill), heavily expanded with:
+This is a **multi-file fork** of the [DuncanBoyne/linkedin-dashboard-skill](https://github.com/DuncanBoyne/linkedin-dashboard-skill), heavily expanded with:
 
 - Pre-built Python and Node.js scripts (no inline code generation needed)
 - Company page analytics support (competitor comparison tables)
 - Dual-format support (old `Content_*` + new `AggregateAnalytics_*` exports)
-- Verus-data export format support
+- Company page export format support (LinkedIn's newer company analytics export)
 - Data segregation architecture (personal vs company data in separate files)
 - Accumulation/archive pattern (never lose aged-out history)
 - xlrd fallback for old binary `.xls` files
@@ -48,6 +48,18 @@ Drop your data in a project folder, run the skill, and it guides you through the
 ```bash
 hermes skills install https://raw.githubusercontent.com/Verus-Data/linkedin-dashboard-skill/main/SKILL.md --name linkedin-dashboard --category data-science --yes
 ```
+
+### As a Claude Code / Claude Desktop project
+
+Clone the repo and point Claude to the `SKILL.md` file:
+
+```bash
+git clone https://github.com/Verus-Data/linkedin-dashboard-skill.git
+cd linkedin-dashboard-skill
+pip3 install openpyxl python-dateutil xlrd
+```
+
+Then reference the skill in your Claude Code session or Claude Desktop project configuration.
 
 ### As a standalone project
 
@@ -100,7 +112,7 @@ open /path/to/project/dashboard.html
 
 ```
 linkedin-dashboard-skill/
-├── SKILL.md                    # Self-contained Hermes skill
+├── SKILL.md                    # Self-contained skill (Hermes / Claude Code)
 ├── README.md                   # This file
 ├── LICENSE                     # MIT
 ├── .gitignore
@@ -108,9 +120,9 @@ linkedin-dashboard-skill/
 │   ├── extract.py              # Parse XLSX exports → JSON archive
 │   └── generate_dashboard.js   # JSON → self-contained HTML dashboard
 └── references/
-    ├── analytics-tools-landscape.md    # Survey of open-source LinkedIn analytics tools
-    ├── verus-data-format.md            # Verus-data export format reference
-    └── competitor-analytics-format.md  # Company page analytics format reference
+    ├── analytics-tools-landscape.md            # Survey of open-source LinkedIn analytics tools
+    ├── company-page-format.md                  # Company page analytics format reference
+    └── competitor-analytics-format.md          # Company page analytics format reference
 ```
 
 ## Licence

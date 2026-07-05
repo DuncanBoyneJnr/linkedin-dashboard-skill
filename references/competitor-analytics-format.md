@@ -14,13 +14,13 @@ Files matching `*competitor_analytics*.xlsx` or `*competitor*.xlsx` are detected
 |-----|---------|---------|
 | 1 | Date range (start, end) | 6/29/2025, 6/28/2026 |
 | 2 | Column headers | Page, New Followers, Posts, Comments, Comments per day, Reactions |
-| 3+ | Data rows | Verus Data, LLC, 19, 4, 0, 0, 1 |
+| 3+ | Data rows | Example Company, Inc., 19, 4, 0, 0, 1 |
 
 ### Columns
 
 | Column | Type | Example |
 |--------|------|---------|
-| Page | string | "Verus Data, LLC" |
+| Page | string | "Example Company, Inc." |
 | New Followers | float | 19.0 |
 | Posts | float | 4.0 |
 | Comments | float | 0.0 |
@@ -55,7 +55,7 @@ The competitor file may have only 3 rows. In `read_only=True` mode, openpyxl's o
   "headers": ["Page", "New Followers", "Posts", "Comments", "Comments per day", "Reactions"],
   "rows": [
     {
-      "Page": "Verus Data, LLC",
+      "Page": "Example Company, Inc.",
       "New Followers": 19,
       "Posts": 4,
       "Comments": 0,

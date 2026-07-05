@@ -1,7 +1,7 @@
 ---
 name: linkedin-dashboard
 description: >
-  Build a full LinkedIn analytics dashboard from two data sources: a LinkedIn Analytics export (xlsx) for impressions, follower counts, and demographics, and an Apify posts export (JSON) for post-level reactions, comments, reposts, and content format analysis. Also supports company page analytics exports and the newer verus-data export format. Guides the user through collecting both data sources if they are missing, ensures about-me.md exists for content recommendations, then runs pre-built Python and Node.js scripts to extract, merge, and generate a self-contained interactive HTML dashboard with strategic analysis and 5 specific content recommendations. Use this skill whenever the user says "linkedin dashboard", "build my dashboard", "analyse my linkedin", "full linkedin analysis", or wants a deeper performance review than the basic analytics export provides.
+  Build a full LinkedIn analytics dashboard from two data sources: a LinkedIn Analytics export (xlsx) for impressions, follower counts, and demographics, and an Apify posts export (JSON) for post-level reactions, comments, reposts, and content format analysis. Also supports company page analytics exports (both the standard competitor format and LinkedIn's newer company page export format). Guides the user through collecting both data sources if they are missing, ensures about-me.md exists for content recommendations, then runs pre-built Python and Node.js scripts to extract, merge, and generate a self-contained interactive HTML dashboard with strategic analysis and 5 specific content recommendations. Use this skill whenever the user says "linkedin dashboard", "build my dashboard", "analyse my linkedin", "full linkedin analysis", or wants a deeper performance review than the basic analytics export provides.
 metadata:
   requires:
     commands:
@@ -19,7 +19,7 @@ A self-contained Hermes skill that turns your LinkedIn data into a fully interac
 
 ## What's included
 
-- **`scripts/extract.py`** — Parses LinkedIn Analytics XLSX exports in multiple formats (personal, company page, verus-data), merges with persistent archive, outputs structured JSON
+- **`scripts/extract.py`** — Parses LinkedIn Analytics XLSX exports in multiple formats (personal, company page, LinkedIn's newer company page format), merges with persistent archive, outputs structured JSON
 - **`scripts/generate_dashboard.js`** — Reads extracted JSON and generates a self-contained interactive HTML dashboard with React + Recharts (libraries inlined)
 - **`references/`** — Format references for all supported export types
 
@@ -48,7 +48,7 @@ Look in the current project folder for:
    - **New format (LinkedIn's current export):** filenames start with `AggregateAnalytics_` (numbers stored as **text strings**; demographics percentages as `"2%"` / `"< 1%"` strings). LinkedIn switched to this format in 2026.
    - Exports usually download to the user's **Downloads** folder, not the project folder. Check both.
 3. **Company page analytics** (optional) — files matching `*competitor_analytics*.xlsx` or `*competitor*.xlsx`
-4. **Verus-data format** (optional) — files matching `verus-data_*.xls` or `verus-data_*.xlsx`
+4. **Company page format** (optional) — LinkedIn's newer company page analytics export, auto-detected by sheet names
 5. **A persistent archive** — `analytics_archive.json` if a previous run created one. **This is the source of truth, not the raw exports.** See the accumulation rule below.
 6. **about-me.md** — a file describing who the user is, their audience, and their content pillars.
 
@@ -188,12 +188,12 @@ python3 path/to/scripts/extract.py [project_dir]
 - Maintains a persistent archive (`analytics_archive.json`) — never drops old data
 - Outputs: `analytics_full.json`, `analytics_archive.json`, `analytics_data.json`
 
-The script reads every `Content_*.xlsx`, `AggregateAnalytics_*.xlsx`, `*competitor_analytics*.xlsx`, and `verus-data_*.*` file in the project folder. It handles all format differences automatically:
+The script reads every `.xlsx` and `.xls` file in the project folder (auto-detecting format by sheet names). It handles all format differences automatically:
 
 - **New-format files** (`AggregateAnalytics_*`) — numbers stored as text strings, demographics as `"2%"` strings
 - **Old-format files** (`Content_*`) — numbers as integers, demographics as decimals
-- **Company page files** (`*competitor_analytics*`) — single COMPETITORS sheet with date range + data rows
-- **Verus-data files** (`verus-data_*`) — newer export format with separate sheets for followers, metrics, posts, visitors, and demographics
+- **Company page files (competitor format)** — single COMPETITORS sheet with date range + data rows
+- **Company page files (newer format)** — separate sheets for followers, metrics, posts, visitors, and demographics
 
 ### 5b. Process the Apify posts JSON
 
@@ -238,7 +238,7 @@ node path/to/scripts/generate_dashboard.js [project_dir]
 ### 5e. Full pipeline
 
 ```bash
-# 1. Extract analytics data (handles personal + company + verus-data formats)
+# 1. Extract analytics data (handles personal + company page formats)
 python3 scripts/extract.py /path/to/project
 
 # 2. Download chart libraries (one-time)
@@ -352,9 +352,9 @@ Numbers may be stored as text strings ("6530") and demographics as percent strin
 
 Format: Row 1 = date range, Row 2 = headers, Row 3+ = data rows.
 
-### Verus-Data Format (verus-data_*)
+### Company Page Format (newer export)
 
-LinkedIn's newer export format. Files may be old binary `.xls` (CDFV2) — handled via xlrd fallback.
+LinkedIn's newer company page analytics export format. Files may be old binary `.xls` (CDFV2) — handled via xlrd fallback.
 
 | Sheet | Content | Columns |
 |-------|---------|---------|

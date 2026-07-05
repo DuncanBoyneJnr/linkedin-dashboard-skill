@@ -2,9 +2,12 @@
 """
 Step 5a: Extract and merge LinkedIn Analytics XLSX exports into persistent archive.
 
-Reads every Content_*.xlsx and AggregateAnalytics_*.xlsx in the project folder,
-handles both old and new format differences, merges into analytics_archive.json,
-and builds analytics_full.json with derived datasets.
+Scans the project directory for all .xlsx and .xls files, auto-detects format
+by sheet names (no manual format selection needed), merges into
+analytics_archive.json, and builds analytics_full.json with derived datasets.
+
+Also handles .zip archives — extracts them into a temp directory and processes
+any .xlsx/.xls files found inside.
 """
 
 import json
@@ -12,11 +15,11 @@ import os
 import re
 import shutil
 import sys
+import tempfile
+import zipfile
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-
-from openpyxl import load_workbook
 
 # Accept project directory as CLI arg, default to current dir
 if len(sys.argv) > 1:
@@ -28,6 +31,69 @@ ARCHIVE_PATH = PROJECT_DIR / "analytics_archive.json"
 DATA_PATH = PROJECT_DIR / "analytics_data.json"
 FULL_PATH = PROJECT_DIR / "analytics_full.json"
 
+
+# ── xlrd fallback ──────────────────────────────────────────────────────────
+
+def load_workbook_safe(filepath, read_only=False):
+    """
+    Open an XLSX/XLS file with openpyxl, falling back to xlrd for old binary
+    .xls files (CDFV2 format) that openpyxl cannot read.
+    """
+    from openpyxl import load_workbook
+    try:
+        return load_workbook(filename=filepath, read_only=read_only)
+    except (zipfile.BadZipFile, Exception) as e:
+        # Try xlrd for old binary .xls files
+        try:
+            import xlrd
+        except ImportError:
+            raise RuntimeError(
+                "xlrd is required for old binary .xls files. "
+                "Install with: pip3 install xlrd"
+            ) from e
+
+        xl_book = xlrd.open_workbook(str(filepath))
+        return XlrdWorkbookWrapper(xl_book)
+
+
+class XlrdSheetWrapper:
+    """Wraps an xlrd sheet to match openpyxl's worksheet interface."""
+
+    def __init__(self, xl_sheet):
+        self._sheet = xl_sheet
+        self.title = xl_sheet.name
+
+    def iter_rows(self, min_row=1, max_col=None, values_only=False):
+        """Yield rows matching openpyxl's iter_rows(values_only=True)."""
+        ncols = self._sheet.ncols
+        if max_col is not None:
+            ncols = min(ncols, max_col)
+        for r in range(min_row - 1, self._sheet.nrows):
+            row = []
+            for c in range(ncols):
+                cell = self._sheet.cell(r, c)
+                row.append(cell.value)
+            yield row
+
+
+class XlrdWorkbookWrapper:
+    """Wraps an xlrd workbook to match openpyxl's workbook interface."""
+
+    def __init__(self, xl_book):
+        self._book = xl_book
+        self.worksheets = [XlrdSheetWrapper(s) for s in xl_book.sheets()]
+
+    def __getitem__(self, name):
+        for ws in self.worksheets:
+            if ws.title == name:
+                return ws
+        raise KeyError(f"Sheet '{name}' not found")
+
+    def close(self):
+        pass
+
+
+# ── Helper functions ──────────────────────────────────────────────────────
 
 def safe_float(val):
     """Coerce a cell value to float, handling text strings and percentage strings."""
@@ -74,6 +140,8 @@ def parse_date(date_string):
     from dateutil.parser import parse
     return parse(str(date_string)).strftime("%Y-%m-%d")
 
+
+# ── Format A: Personal/Creator Analytics (AggregateAnalytics_* / Content_*) ──
 
 def extract_engagement(sheet):
     """Extract daily engagement data from ENGAGEMENT sheet."""
@@ -175,6 +243,8 @@ def extract_top_posts(sheet):
     return list(posts.values())
 
 
+# ── Format B: Competitor Analytics (single COMPETITORS sheet) ──────────────
+
 def extract_competitor_analytics(filepath):
     """Extract competitor analytics data from a COMPETITORS sheet.
 
@@ -183,7 +253,7 @@ def extract_competitor_analytics(filepath):
       Row 2: Headers (Page, New Followers, Posts, Comments, Comments per day, Reactions)
       Row 3+: Data rows for each company page
     """
-    wb = load_workbook(filename=filepath)
+    wb = load_workbook_safe(filepath)  # NOT read_only — may miss rows
     sheet = wb["COMPETITORS"]
 
     rows = list(sheet.iter_rows(values_only=True))
@@ -226,9 +296,108 @@ def extract_competitor_analytics(filepath):
     }
 
 
+# ── Format C: Company Page Analytics (New followers / Metrics / All posts / Visitor metrics) ──
+
+def extract_followers_new(sheet):
+    """Extract daily follower data from 'New followers' sheet (company page format)."""
+    rows = []
+    for row in sheet.iter_rows(min_row=2, max_col=5, values_only=True):
+        if row[0] is None:
+            continue
+        try:
+            date = parse_date(row[0])
+            rows.append({
+                "date": date,
+                "sponsored_followers": safe_float(row[1]) if len(row) > 1 else 0.0,
+                "organic_followers": safe_float(row[2]) if len(row) > 2 else 0.0,
+                "auto_invited_followers": safe_float(row[3]) if len(row) > 3 else 0.0,
+                "new_followers": safe_float(row[4]) if len(row) > 4 else 0.0,
+            })
+        except Exception:
+            continue
+    return rows
+
+
+def extract_engagement_new(sheet):
+    """Extract daily engagement data from 'Metrics' sheet (company page format)."""
+    rows = []
+    for row in sheet.iter_rows(min_row=2, max_col=4, values_only=True):
+        if row[0] is None:
+            continue
+        try:
+            date = parse_date(row[0])
+            rows.append({
+                "date": date,
+                "impressions": safe_float(row[1]) if len(row) > 1 else 0.0,
+                "unique_impressions": safe_float(row[2]) if len(row) > 2 else 0.0,
+                "engagement_rate": safe_float(row[3]) if len(row) > 3 else 0.0,
+            })
+        except Exception:
+            continue
+    return rows
+
+
+def extract_all_posts_new(sheet):
+    """Extract per-post data from 'All posts' sheet (company page format)."""
+    posts = []
+    for row in sheet.iter_rows(min_row=2, max_col=5, values_only=True):
+        if row[0] is None:
+            continue
+        try:
+            posts.append({
+                "date": parse_date(row[0]),
+                "post_url": str(row[1]).strip() if row[1] else "",
+                "impressions": safe_float(row[2]) if len(row) > 2 else 0.0,
+                "engagements": safe_float(row[3]) if len(row) > 3 else 0.0,
+                "engagement_rate": safe_float(row[4]) if len(row) > 4 else 0.0,
+            })
+        except Exception:
+            continue
+    return posts
+
+
+def extract_visitors_new(sheet):
+    """Extract daily visitor data from 'Visitor metrics' sheet (company page format)."""
+    rows = []
+    for row in sheet.iter_rows(min_row=2, max_col=3, values_only=True):
+        if row[0] is None:
+            continue
+        try:
+            rows.append({
+                "date": parse_date(row[0]),
+                "page_views": safe_float(row[1]) if len(row) > 1 else 0.0,
+                "unique_visitors": safe_float(row[2]) if len(row) > 2 else 0.0,
+            })
+        except Exception:
+            continue
+    return rows
+
+
+def extract_demographics_new(wb, sheet_names):
+    """Extract demographics from company page format sheets (Location, Job function, etc.)."""
+    demographic_sheets = [
+        "Location", "Job function", "Seniority", "Industry", "Company size"
+    ]
+    demographics = []
+    for name in demographic_sheets:
+        if name in sheet_names:
+            sheet = wb[name]
+            for row in sheet.iter_rows(min_row=2, max_col=2, values_only=True):
+                if row[0] is None:
+                    continue
+                demographics.append({
+                    "demographic_type": name,
+                    "value": str(row[0]).strip(),
+                    "total_followers": safe_float(row[1]) if len(row) > 1 else 0.0,
+                })
+    return demographics
+
+
+# ── Main extraction dispatcher ─────────────────────────────────────────────
+
 def extract_xlsx(filepath):
-    """Extract all data from a single XLSX file."""
-    wb = load_workbook(filename=filepath, read_only=True)
+    """Extract all data from a single XLSX/XLS file, auto-detecting format by sheet names."""
+    wb = load_workbook_safe(filepath, read_only=True)
     result = {}
 
     sheet_names = [s.title for s in wb.worksheets]
@@ -241,6 +410,22 @@ def extract_xlsx(filepath):
             result["competitor"] = comp
         return result
 
+    # Detect company page format (New followers / Metrics / All posts / Visitor metrics)
+    if "New followers" in sheet_names or "Metrics" in sheet_names:
+        if "New followers" in sheet_names:
+            result["followers"] = extract_followers_new(wb["New followers"])
+            result["follower_demographics"] = extract_demographics_new(wb, sheet_names)
+        if "Metrics" in sheet_names:
+            result["engagement"] = extract_engagement_new(wb["Metrics"])
+        if "All posts" in sheet_names:
+            result["top_posts"] = extract_all_posts_new(wb["All posts"])
+        if "Visitor metrics" in sheet_names:
+            result["visitors"] = extract_visitors_new(wb["Visitor metrics"])
+            result["visitor_demographics"] = extract_demographics_new(wb, sheet_names)
+        wb.close()
+        return result
+
+    # Detect personal/creator format (ENGAGEMENT / FOLLOWERS / DEMOGRAPHICS / TOP POSTS)
     if "ENGAGEMENT" in sheet_names:
         result["engagement"] = extract_engagement(wb["ENGAGEMENT"])
     if "FOLLOWERS" in sheet_names:
@@ -266,6 +451,8 @@ def extract_xlsx(filepath):
     wb.close()
     return result
 
+
+# ── Archive merge ──────────────────────────────────────────────────────────
 
 def merge_archives(existing, new_data, filepath):
     """Merge new data into existing archive, keeping higher values on overlap."""
@@ -314,6 +501,8 @@ def merge_archives(existing, new_data, filepath):
 
     return existing
 
+
+# ── Derived datasets ───────────────────────────────────────────────────────
 
 def build_derived(archive):
     """Build derived datasets: monthly aggregates, cumulative followers, totals."""
@@ -413,23 +602,59 @@ def build_derived(archive):
     return result
 
 
+# ── File discovery ─────────────────────────────────────────────────────────
+
+def find_spreadsheet_files(project_dir):
+    """
+    Find all .xlsx and .xls files in the project directory.
+    Also checks for .zip archives and extracts them into a temp directory.
+    Returns a list of (filepath, is_temp) tuples.
+    """
+    files = []
+
+    # Scan for .xlsx and .xls files
+    for ext in ("*.xlsx", "*.xls"):
+        files.extend(project_dir.glob(ext))
+
+    # Check for .zip archives and extract them
+    for zip_path in project_dir.glob("*.zip"):
+        print(f"\nFound zip archive: {zip_path.name}")
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # Extract to a temp directory
+                extract_dir = Path(tempfile.mkdtemp(prefix="linkedin_zip_"))
+                zf.extractall(path=extract_dir)
+                print(f"  Extracted to {extract_dir}")
+                for ext in ("*.xlsx", "*.xls"):
+                    files.extend(extract_dir.glob(ext))
+        except Exception as e:
+            print(f"  WARNING: Could not extract {zip_path.name}: {e}")
+
+    # Deduplicate by resolved path
+    seen = set()
+    unique = []
+    for f in files:
+        resolved = f.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+
+    return sorted(unique)
+
+
+# ── Main ──────────────────────────────────────────────────────────────────
+
 def main():
-    # Find all XLSX files (deduplicated — overlapping globs may match the same file)
-    xlsx_files = sorted(set(
-        PROJECT_DIR.glob("Content_*.xlsx")
-    ) | set(
-        PROJECT_DIR.glob("AggregateAnalytics_*.xlsx")
-    ) | set(
-        PROJECT_DIR.glob("*competitor_analytics*.xlsx")
-    ) | set(
-        PROJECT_DIR.glob("*competitor*.xlsx")
-    ))
+    # Find all spreadsheet files (auto-detect, no hardcoded filename patterns)
+    xlsx_files = find_spreadsheet_files(PROJECT_DIR)
 
     if not xlsx_files:
-        print("No LinkedIn Analytics XLSX files found.")
+        print("No LinkedIn Analytics XLSX/XLS files found.")
+        print(f"Looked in: {PROJECT_DIR}")
+        print("Drop your LinkedIn Analytics exports (.xlsx or .xls) or a .zip archive into this folder.")
         return
 
-    print(f"Found {len(xlsx_files)} XLSX file(s):")
+    print(f"Found {len(xlsx_files)} spreadsheet file(s):")
     for f in xlsx_files:
         print(f"  - {f.name}")
 
