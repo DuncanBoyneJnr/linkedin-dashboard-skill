@@ -1,12 +1,23 @@
 ---
 name: linkedin-dashboard
 description: >
-  Build a full LinkedIn analytics dashboard from two data sources: a LinkedIn Analytics export (xlsx) for impressions, follower counts, and demographics, and an Apify posts export (JSON) for post-level reactions, comments, reposts, and content format analysis. Guides the user through collecting both data sources if they are missing, ensures about-me.md exists for content recommendations, then generates a self-contained interactive HTML dashboard with strategic analysis and 5 specific content recommendations. Use this skill whenever the user says "linkedin dashboard", "build my dashboard", "analyse my linkedin", "full linkedin analysis", or wants a deeper performance review than the basic analytics export provides.
+  Build a full LinkedIn analytics dashboard from two data sources: a LinkedIn Analytics export (xlsx) for impressions, follower counts, and demographics, and an Apify posts export (JSON) for post-level reactions, comments, reposts, and content format analysis. Also supports company page analytics exports (both the standard competitor format and LinkedIn's newer company page export format). Guides the user through collecting both data sources if they are missing, ensures about-me.md exists for content recommendations, then runs pre-built Python and Node.js scripts to extract, merge, and generate a self-contained interactive HTML dashboard with strategic analysis and 5 specific content recommendations. Use this skill whenever the user says "linkedin dashboard", "build my dashboard", "analyse my linkedin", "full linkedin analysis", or wants a deeper performance review than the basic analytics export provides.
+metadata:
+  requires:
+    commands:
+      - python3
+      - node
+    pip:
+      - openpyxl
+      - python-dateutil
+      - xlrd
 ---
 
 <!--
 HOW TO INSTALL THIS SKILL
 =========================
+
+Claude Code:
 1. Create the folder: ~/.claude/skills/linkedin-dashboard/
    - Mac/Linux: mkdir -p ~/.claude/skills/linkedin-dashboard
    - Windows:   mkdir "$env:USERPROFILE\.claude\skills\linkedin-dashboard"
@@ -14,14 +25,18 @@ HOW TO INSTALL THIS SKILL
 3. Restart Claude Code (or reload the window).
 4. Trigger it by saying: "linkedin dashboard", "build my dashboard", or "analyse my linkedin".
 
+Hermes Agent:
+1. Run: hermes skills install <url-to-this-skill> --name linkedin-dashboard --category data-science --yes
+2. Trigger it by saying: "linkedin dashboard", "build my dashboard", or "analyse my linkedin".
+
 REQUIREMENTS
 ============
-- Python 3 with openpyxl installed  (pip install openpyxl)
+- Python 3 with openpyxl, python-dateutil, xlrd installed (pip3 install openpyxl python-dateutil xlrd)
 - Node.js (any recent version)
-- A Claude Code project folder to work in
+- A project folder to work in
 
-DATA SOURCES NEEDED (Claude will guide you through getting both)
-================================================================
+DATA SOURCES NEEDED (the skill will guide you through getting both)
+====================================================================
 - LinkedIn Analytics export (.xlsx) from linkedin.com/analytics/creator
 - Apify posts export (.json) from apify.com (free tier is sufficient)
 -->
@@ -31,6 +46,12 @@ DATA SOURCES NEEDED (Claude will guide you through getting both)
 ## CRITICAL: Auto-start on load
 
 Go straight to Step 1. Do not summarise the skill.
+
+## What's included
+
+- **`scripts/extract.py`** — Parses LinkedIn Analytics XLSX exports in multiple formats (personal, company page, LinkedIn's newer company page format), merges with persistent archive, outputs structured JSON
+- **`scripts/generate_dashboard.js`** — Reads extracted JSON and generates a self-contained interactive HTML dashboard with React + Recharts (libraries inlined)
+- **`references/`** — Format references for all supported export types
 
 ---
 
@@ -43,8 +64,10 @@ Look in the current project folder for:
    - **Old format:** filenames start with `Content_` (numbers stored as integers; demographics percentages as decimals).
    - **New format (LinkedIn's current export):** filenames start with `AggregateAnalytics_` (numbers stored as **text strings**; demographics percentages as `"2%"` / `"< 1%"` strings). LinkedIn switched to this format in 2026.
    - Exports usually download to the user's **Downloads** folder, not the project folder. Check both.
-3. **A persistent archive** — `analytics_archive.json` if a previous run created one. **This is the source of truth, not the raw exports.** See the accumulation rule below.
-4. **about-me.md** — a file describing who the user is, their audience, and their content pillars.
+3. **Company page analytics** (optional) — files matching `*competitor_analytics*.xlsx` or `*competitor*.xlsx`
+4. **Company page format** (optional) — LinkedIn's newer company page analytics export, auto-detected by sheet names
+5. **A persistent archive** — `analytics_archive.json` if a previous run created one. **This is the source of truth, not the raw exports.** See the accumulation rule below.
+6. **about-me.md** — a file describing who the user is, their audience, and their content pillars.
 
 Report what was found and what is missing. Then work through any missing items in order: Step 2 (Apify) → Step 3 (Analytics exports) → Step 4 (about-me.md) → Step 5 (build).
 
@@ -108,6 +131,16 @@ Tell the user:
 
 Wait for the user to confirm the files are in place.
 
+### Company page analytics (optional)
+
+If the user manages a LinkedIn company page, they can also export company page analytics:
+
+> To get your company page analytics:
+>
+> 1. Go to **linkedin.com/analytics/page** and select your company page.
+> 2. Look for an **Export** button — the file downloads as `*competitor_analytics*.xlsx`.
+> 3. Drop it into the project folder alongside your personal analytics.
+
 ---
 
 ## Step 4. Create about-me.md (if missing)
@@ -156,109 +189,95 @@ Confirm the file was created before moving to Step 5.
 
 ## Step 5. Build the dashboard
 
-Now build the full analytics dashboard. This requires Python (openpyxl) and Node.js. Check both are available before proceeding.
+Now build the full analytics dashboard using the pre-built scripts. This requires Python (openpyxl, python-dateutil, xlrd) and Node.js. Check both are available before proceeding.
 
 ### 5a. Extract and merge into the persistent archive
 
-Use Python with openpyxl to read **every** `Content_*.xlsx` and `AggregateAnalytics_*.xlsx` file found in the project folder **and the user's Downloads folder**. First, if an `analytics_archive.json` already exists, **back it up** and **seed the merge from it** so previously-captured dates that have since aged out of LinkedIn's export window are preserved.
+Run the extraction script from the project directory:
 
-**Format differences you must handle (critical):**
-- New-format files (`AggregateAnalytics_*`) store **all numbers as text strings** (`"6530"`, not `6530`). Coerce every numeric cell with a string-safe helper — do not call `int(cell)` directly or it will crash / misread.
-- New-format DEMOGRAPHICS percentages are strings like `"2%"` and `"< 1%"`. Strip `<` and `%`, then divide by 100. Do **not** gate on `isinstance(cell, (int, float))` — that silently zeros every new-format demographic.
-- New-format FOLLOWERS total snapshot reads `"Total followers on 6/5/2026"` (no colon). Extract the date with a regex, not `split(":")`.
+```bash
+python3 path/to/scripts/extract.py [project_dir]
+```
 
-**ENGAGEMENT sheet** (Date, Impressions, Engagements — daily rows):
-- Merge by date key. Where dates overlap across files or the archive, **keep the higher value**.
+- `project_dir` — optional, defaults to current directory
+- Auto-detects format by sheet names (no manual format selection needed)
+- Handles old `.xls` binary format via xlrd fallback (openpyxl → xlrd on BadZipFile/InvalidFileException)
+- Maintains a persistent archive (`analytics_archive.json`) — never drops old data
+- Outputs: `analytics_full.json`, `analytics_archive.json`, `analytics_data.json`
 
-**FOLLOWERS sheet** (Date, New followers + total snapshot):
-- Same date-merge approach.
-- Capture all follower total snapshots for calibrating cumulative totals.
+The script reads every `.xlsx` and `.xls` file in the project folder (auto-detecting format by sheet names). It handles all format differences automatically:
 
-**TOP POSTS sheet** (two tables in one sheet, separated by a blank column D — cols A–C by engagements, cols E–G by impressions):
-- Merge on post URL. Keep the highest engagement and impression values seen across files.
-
-**DEMOGRAPHICS sheet** (category, value, percentage):
-- Use the file with the widest date range.
-
-**Never drop a date** that is in the archive but absent from the current export.
-
-Write the merged output to **`analytics_archive.json`** (the persistent source of truth) and a working copy `analytics_data.json`. After writing, verify against the backup: 0 dates lost, no impression value regressions, demographics percentages non-zero.
-
-Then build derived datasets:
-- **Monthly aggregates**: sum impressions, engagements, new followers per month. Calculate engagement rate (engagements / impressions).
-- **Cumulative follower series**: anchor on the earliest total snapshot, reconstruct backwards and forwards from daily new follower data.
-- **analytics_full.json**: final output containing `daily`, `monthly`, `top_posts`, `demographics`, and `totals`.
+- **New-format files** (`AggregateAnalytics_*`) — numbers stored as text strings, demographics as `"2%"` strings
+- **Old-format files** (`Content_*`) — numbers as integers, demographics as decimals
+- **Company page files (competitor format)** — single COMPETITORS sheet with date range + data rows
+- **Company page files (newer format)** — separate sheets for followers, metrics, posts, visitors, and demographics
 
 ### 5b. Process the Apify posts JSON
 
-Read the Apify posts JSON. Filter out reposts (post_type === 'repost'). For each remaining post extract:
-- Date, day of week, month
-- Reactions (total and by type: like, love, celebrate, insight, support, funny)
-- Comments, reposts
-- Total engagements (reactions + comments + reposts)
-- Content format (image / carousel / video / article / text)
-- Post URL and first 100 chars of text
-
-Write compact output to `scatter_compact.json` (array of arrays to minimise size).
-
-Compute aggregates:
-- By day of week: average reactions, average engagements, post count
-- By content format: average reactions, average engagements, post count
-- Top hashtags by frequency
+The script also looks for Apify JSON exports in the project folder. If found, it processes them into `scatter_compact.json` with per-post metrics broken down by day of week, content format, and hashtag frequency.
 
 ### 5c. Download chart library dependencies
 
 Check if the following files already exist in the project folder. Download any that are missing:
-- `react.min.js` — from `https://unpkg.com/react@18/umd/react.production.min.js`
-- `react-dom.min.js` — from `https://unpkg.com/react-dom@18/umd/react-dom.production.min.js`
-- `prop-types.min.js` — from `https://unpkg.com/prop-types@15.8.1/prop-types.min.js`
-- `recharts.min.js` — from `https://unpkg.com/recharts@2.12.7/umd/Recharts.js`
+
+```bash
+curl -sL https://unpkg.com/react@18/umd/react.production.min.js -o react.min.js
+curl -sL https://unpkg.com/react-dom@18/umd/react-dom.production.min.js -o react-dom.min.js
+curl -sL https://unpkg.com/prop-types@15.8.1/prop-types.min.js -o prop-types.min.js
+curl -sL https://unpkg.com/recharts@2.12.7/umd/Recharts.js -o recharts.min.js
+```
 
 These are inlined into the final HTML so the dashboard works offline.
 
 ### 5d. Generate the HTML dashboard
 
-Write a Node.js generator script (`generate_dashboard.js`) that reads `analytics_full.json`, `scatter_compact.json`, and the four library files, and writes a single self-contained `dashboard.html`.
+Run the dashboard generator:
 
-**Critical: apostrophes in analysis text strings**
-All analysis text embedded as JavaScript string literals must use properly escaped apostrophes. In Node.js template literals, `\\'` in the source produces `\'` in the output HTML, which JavaScript correctly parses as an escaped apostrophe in a single-quoted string. Unescaped apostrophes will silently break the page with no visible error. After generating the file, always validate the embedded script with `node --check`.
+```bash
+node path/to/scripts/generate_dashboard.js [project_dir]
+```
 
-The dashboard must include these panels:
+- Reads `analytics_full.json` and the four library files
+- Writes a single self-contained `dashboard.html` with React + Recharts
+- Dark theme (`#0f1117`), all numbers formatted (67K not 67000)
+- Fully offline — no CDN calls, no external dependencies
 
-**Headline cards:**
-- Total impressions, total engagements (LinkedIn metric), current followers, new followers gained, average daily impressions, average engagement rate, total posts
+**Dashboard panels:**
 
-**Monthly trend (tabbed):**
-- Tab 1: impressions (bars) + engagements (bars) + new followers (line) — dual y-axis
-- Tab 2: engagement rate per month (bar, highlight above/below average)
-- Tab 3: new followers per month (bars)
+- **Headline cards:** Total impressions, total engagements, current followers, new followers gained, average daily impressions, average engagement rate, total days tracked
+- **Monthly trend (tabbed):** Tab 1: impressions + engagements + new followers (dual y-axis). Tab 2: engagement rate per month. Tab 3: new followers per month
+- **Follower growth (weekly area chart):** Cumulative total (area) + new followers per week (bars) — dual y-axis
+- **Post performance scatter:** X: impressions, Y: engagements. Four quadrants based on medians: Stars / Viral-Shallow / Niche-Gold / Underperformers. Hover tooltip with date and link to post
+- **Audience demographics:** Horizontal bar charts by demographic type (job titles, industries, seniority, company size, locations)
+- **Company page analytics (if available):** Competitor comparison table sorted by new followers
+- **Top 10 posts table:** Date, impressions, engagements, engagement rate, quadrant label, clickable link
 
-**Follower growth (weekly area chart):**
-- Cumulative total (area) + new followers per week (bars) — dual y-axis
+### 5e. Full pipeline
 
-**Day-of-week performance (from Apify data):**
-- Average reactions and average engagements per post by day — highlight Tuesday and Thursday if they lead
+```bash
+# 1. Extract analytics data (handles personal + company page formats)
+python3 scripts/extract.py /path/to/project
 
-**Content format comparison (from Apify data):**
-- Average reactions, average engagements, post count by format (image / carousel / video / article / text)
+# 2. Download chart libraries (one-time)
+cd /path/to/project
+curl -sL https://unpkg.com/react@18/umd/react.production.min.js -o react.min.js
+curl -sL https://unpkg.com/react-dom@18/umd/react-dom.production.min.js -o react-dom.min.js
+curl -sL https://unpkg.com/prop-types@15.8.1/prop-types.min.js -o prop-types.min.js
+curl -sL https://unpkg.com/recharts@2.12.7/umd/Recharts.js -o recharts.min.js
 
-**Post performance scatter (from Analytics top posts):**
-- X: impressions, Y: engagements
-- Four quadrants based on medians: Stars / Viral-Shallow / Niche-Gold / Underperformers
-- Hover tooltip with date and link to post
+# 3. Generate dashboard
+node scripts/generate_dashboard.js /path/to/project
 
-**Demographics (from Analytics):**
-- Horizontal bar charts: job titles, industries, seniority, company size, top locations
+# 4. Open in browser
+open /path/to/project/dashboard.html
+```
 
-**Top 10 posts table (from Analytics):**
-- Date, impressions, engagements, engagement rate, quadrant label, clickable link
+### 5f. Verify
 
-**Visual rules:**
-- Dark background `#0f1117`
-- All numbers formatted: `67K` not `67000`
-- Fully self-contained — no CDN calls, no external dependencies
-
-Run `node generate_dashboard.js` and confirm the file was written without errors. Then open `dashboard.html` in the browser.
+After generating, confirm:
+- `dashboard.html` was written without errors
+- Open it in the browser and check it renders
+- If the dashboard opens blank, check the browser console. Common causes: CDN scripts not loaded (fix: inline them), unescaped apostrophes in JS string literals, or `</script>` appearing inside the script block.
 
 ---
 
@@ -315,13 +334,80 @@ After the analysis:
 
 ---
 
+## Data Flow
+
+```
+XLSX exports → scripts/extract.py → analytics_archive.json (persistent source of truth)
+                                    → analytics_personal.json (personal profile: impressions, engagements, followers, top_posts, demographics)
+                                    → analytics_company.json (company page: page_views, unique_visitors, visitor_demographics, competitor, top_posts)
+                                    → analytics_data.json (working copy of archive)
+
+analytics_personal.json → scripts/generate_dashboard.js → dashboard_personal.html (standalone)
+analytics_company.json  → scripts/generate_dashboard.js → dashboard_company.html (standalone)
+```
+
+Personal and company data are kept in separate files. The HTML generator reads `top_posts` from whatever file it's given — no special-casing needed.
+
+## File Format Support
+
+### Personal/Creator Analytics (AggregateAnalytics_*)
+
+| Sheet | Content | Columns |
+|-------|---------|---------|
+| ENGAGEMENT | Daily impressions, engagements | Date, Impressions, Clicks, Likes, Comments, Reposts, Sends, Engagement rate |
+| FOLLOWERS | Daily new followers + snapshots | Date, New followers, Total followers (snapshot rows) |
+| TOP POSTS | Per-post metrics | Date, Post URL, Impressions, Engagements, Engagement rate |
+| DEMOGRAPHICS | Audience breakdown | Category, Name, Value (percent) |
+
+Numbers may be stored as text strings ("6530") and demographics as percent strings ("2%"). Both are handled automatically.
+
+### Company Page Analytics (*competitor_analytics*)
+
+| Sheet | Content | Columns |
+|-------|---------|---------|
+| COMPETITORS | Aggregate company page metrics | Page, New Followers, Posts, Comments, Comments per day, Reactions |
+
+Format: Row 1 = date range, Row 2 = headers, Row 3+ = data rows.
+
+### Company Page Format (newer export)
+
+LinkedIn's newer company page analytics export format. Files may be old binary `.xls` (CDFV2) — handled via xlrd fallback.
+
+| Sheet | Content | Columns |
+|-------|---------|---------|
+| New followers | Daily follower counts | Date, Sponsored followers, Organic followers, Auto-invited followers, Total followers |
+| Location | Follower geography | Location, Total followers |
+| Job function | Follower job functions | Job function, Total followers |
+| Seniority | Follower seniority levels | Seniority, Total followers |
+| Industry | Follower industries | Industry, Total followers |
+| Company size | Follower company sizes | Company size, Total followers |
+| Metrics | Daily engagement metrics | Date, Impressions, Unique impressions, Engagement rate |
+| All posts | Per-post metrics | Date, Post URL, Impressions, Engagements, Engagement rate |
+| Visitor metrics | Daily page views | Date, Page views, Unique visitors |
+| Visitor location | Visitor geography | Location, Total visitors |
+| Visitor job function | Visitor job functions | Job function, Total visitors |
+| Visitor seniority | Visitor seniority levels | Seniority, Total visitors |
+| Visitor industry | Visitor industries | Industry, Total visitors |
+| Visitor company size | Visitor company sizes | Company size, Total visitors |
+
+## Archive Merge Rules
+
+- **Engagement data** — merged by date key; higher values win on overlap
+- **Follower data** — merged by date key; higher values win on overlap
+- **Visitor data** — merged by date key; higher values win on overlap
+- **Top posts** — merged by post URL; deduplicated
+- **Demographics** — last file's data wins (widest date range)
+- **Follower/visitor demographics** — last file's data wins
+- **Competitor data** — last file's data wins
+- **Follower snapshots** — accumulated (all snapshots kept)
+
 ## Rules
 
 - Use numbers, not adjectives. "Engagement rate is 2.3%" beats "engagement is strong".
 - Never invent metrics not present in the data.
 - If data is missing (no Apify file, no demographics, partial date range) flag it clearly rather than silently working around it.
-- After generating the HTML, always validate with `node --check` before declaring it done.
-- If the dashboard opens blank, check the browser console. The most common causes are: CDN scripts not loaded (fix: inline them), unescaped apostrophes in JS string literals (fix: use `\\'` in template literal source), or `</script>` appearing inside the script block (fix: escape as `<\/script>`).
+- After generating the HTML, always open it in the browser to verify before declaring it done.
+- If the dashboard opens blank, check the browser console. The most common causes are: CDN scripts not loaded (fix: inline them), unescaped apostrophes in JS string literals (fix: use `\\'` in template literal source), or `</script>` appearing inside the script block (fix: escape as `<\\/script>`).
 - British English unless about-me.md specifies otherwise.
 - Never use em dashes.
 - Recommend running this monthly. One month of data is context. Twelve months is a strategy.
