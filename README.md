@@ -1,6 +1,6 @@
-# LinkedIn Dashboard Skill
+# LinkedIn Dashboard Skill for Claude Code
 
-A self-contained skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
+A Claude Code skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
 
 This is a **multi-file fork** of the [DuncanBoyne/linkedin-dashboard-skill](https://github.com/DuncanBoyne/linkedin-dashboard-skill), heavily expanded with:
 
@@ -15,7 +15,7 @@ This is a **multi-file fork** of the [DuncanBoyne/linkedin-dashboard-skill](http
 
 ## What it does
 
-Drop your data in a project folder, run the skill, and it guides you through the full pipeline:
+Drop your data in a project folder, say **"linkedin dashboard"**, and the skill guides you through the full pipeline:
 
 1. Collects your Apify posts export (per-post reactions, comments, reposts, format)
 2. Collects your LinkedIn Analytics exports (impressions, follower counts, demographics)
@@ -37,29 +37,42 @@ Drop your data in a project folder, run the skill, and it guides you through the
 
 ## Requirements
 
+- [Claude Code](https://claude.ai/code) or [Hermes Agent](https://hermes-agent.nousresearch.com)
 - Python 3 with `openpyxl`, `python-dateutil`, `xlrd` (`pip3 install openpyxl python-dateutil xlrd`)
 - Node.js (any recent version)
 - A free [Apify](https://apify.com) account for the posts scrape
 
 ## Installation
 
+### As a Claude Code skill
+
+```bash
+# Mac / Linux
+mkdir -p ~/.claude/skills/linkedin-dashboard
+curl -o ~/.claude/skills/linkedin-dashboard/SKILL.md \
+  https://raw.githubusercontent.com/Verus-Data/linkedin-dashboard-skill/main/SKILL.md
+
+# Windows (PowerShell)
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\linkedin-dashboard"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Verus-Data/linkedin-dashboard-skill/main/SKILL.md" `
+  -OutFile "$env:USERPROFILE\.claude\skills\linkedin-dashboard\SKILL.md"
+```
+
+Or download `SKILL.md` manually and place it at:
+- Mac/Linux: `~/.claude/skills/linkedin-dashboard/SKILL.md`
+- Windows: `%USERPROFILE%\.claude\skills\linkedin-dashboard\SKILL.md`
+
+Restart Claude Code, then trigger the skill by saying any of:
+- `linkedin dashboard`
+- `build my dashboard`
+- `analyse my linkedin`
+- `full linkedin analysis`
+
 ### As a Hermes skill
 
 ```bash
 hermes skills install https://raw.githubusercontent.com/Verus-Data/linkedin-dashboard-skill/main/SKILL.md --name linkedin-dashboard --category data-science --yes
 ```
-
-### As a Claude Code / Claude Desktop project
-
-Clone the repo and point Claude to the `SKILL.md` file:
-
-```bash
-git clone https://github.com/Verus-Data/linkedin-dashboard-skill.git
-cd linkedin-dashboard-skill
-pip3 install openpyxl python-dateutil xlrd
-```
-
-Then reference the skill in your Claude Code session or Claude Desktop project configuration.
 
 ### As a standalone project
 
@@ -112,7 +125,7 @@ open /path/to/project/dashboard.html
 
 ```
 linkedin-dashboard-skill/
-├── SKILL.md                    # Self-contained skill (Hermes / Claude Code)
+├── SKILL.md                    # Self-contained skill (Claude Code / Hermes)
 ├── README.md                   # This file
 ├── LICENSE                     # MIT
 ├── .gitignore
@@ -124,6 +137,12 @@ linkedin-dashboard-skill/
     ├── company-page-format.md                  # Company page analytics format reference
     └── competitor-analytics-format.md          # Company page analytics format reference
 ```
+
+## Full walkthrough
+
+For a detailed explanation of how the pipeline works — data sources, the follower reconstruction logic, what each dashboard panel shows, and the quadrant analysis — read the full post:
+
+[How I Built a LinkedIn Analytics Dashboard with Claude Code](https://www.duncanboyne.co.uk/blog/linkedin-analytics-dashboard-claude-code)
 
 ## Licence
 

@@ -13,28 +13,45 @@ metadata:
       - xlrd
 ---
 
+<!--
+HOW TO INSTALL THIS SKILL
+=========================
+
+Claude Code:
+1. Create the folder: ~/.claude/skills/linkedin-dashboard/
+   - Mac/Linux: mkdir -p ~/.claude/skills/linkedin-dashboard
+   - Windows:   mkdir "$env:USERPROFILE\.claude\skills\linkedin-dashboard"
+2. Save this file as SKILL.md inside that folder.
+3. Restart Claude Code (or reload the window).
+4. Trigger it by saying: "linkedin dashboard", "build my dashboard", or "analyse my linkedin".
+
+Hermes Agent:
+1. Run: hermes skills install <url-to-this-skill> --name linkedin-dashboard --category data-science --yes
+2. Trigger it by saying: "linkedin dashboard", "build my dashboard", or "analyse my linkedin".
+
+REQUIREMENTS
+============
+- Python 3 with openpyxl, python-dateutil, xlrd installed (pip3 install openpyxl python-dateutil xlrd)
+- Node.js (any recent version)
+- A project folder to work in
+
+DATA SOURCES NEEDED (the skill will guide you through getting both)
+====================================================================
+- LinkedIn Analytics export (.xlsx) from linkedin.com/analytics/creator
+- Apify posts export (.json) from apify.com (free tier is sufficient)
+-->
+
 # LinkedIn Dashboard
 
-A self-contained Hermes skill that turns your LinkedIn data into a fully interactive analytics dashboard — with strategic analysis and 5 specific content recommendations.
+## CRITICAL: Auto-start on load
+
+Go straight to Step 1. Do not summarise the skill.
 
 ## What's included
 
 - **`scripts/extract.py`** — Parses LinkedIn Analytics XLSX exports in multiple formats (personal, company page, LinkedIn's newer company page format), merges with persistent archive, outputs structured JSON
 - **`scripts/generate_dashboard.js`** — Reads extracted JSON and generates a self-contained interactive HTML dashboard with React + Recharts (libraries inlined)
 - **`references/`** — Format references for all supported export types
-
-## Prerequisites
-
-1. **Install Python dependencies:**
-   ```bash
-   pip3 install openpyxl python-dateutil xlrd
-   ```
-
-2. **Get your data sources:**
-   - **Apify posts export** — JSON file from apify.com (per-post reactions, comments, reposts)
-   - **LinkedIn Analytics exports** — XLSX from linkedin.com/analytics/creator
-   - **Company page analytics** (optional) — XLSX from linkedin.com/analytics/page
-   - **about-me.md** — describes who you are, your audience, and content pillars
 
 ---
 
