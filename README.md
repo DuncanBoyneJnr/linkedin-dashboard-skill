@@ -36,11 +36,11 @@ Drop your data in a project folder, say **"linkedin dashboard"**, and Claude gui
 # Mac / Linux
 mkdir -p ~/.claude/skills/linkedin-dashboard
 curl -o ~/.claude/skills/linkedin-dashboard/SKILL.md \
-  https://raw.githubusercontent.com/DuncanBoyneJnr/linkedin-dashboard-skill/main/SKILL.md
+  https://raw.githubusercontent.com/DuncanBoyne/linkedin-dashboard-skill/main/SKILL.md
 
 # Windows (PowerShell)
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\linkedin-dashboard"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/DuncanBoyneJnr/linkedin-dashboard-skill/main/SKILL.md" `
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/DuncanBoyne/linkedin-dashboard-skill/main/SKILL.md" `
   -OutFile "$env:USERPROFILE\.claude\skills\linkedin-dashboard\SKILL.md"
 ```
 
