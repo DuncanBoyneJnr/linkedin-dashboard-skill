@@ -14,12 +14,12 @@ Drop your data in a project folder, say **"linkedin dashboard"**, and Claude gui
 
 ## Dashboard panels
 
-- Headline cards: impressions, engagement rate, follower count, total posts
+- Headline cards: impressions, engagement rate, follower count, total posts, members reached, avg views per member
 - Monthly trend (tabbed): impressions, engagement rate, new followers
 - Follower growth: weekly cumulative area chart + new followers per week
 - Day-of-week performance: which days get the most reactions and engagements
 - Content format comparison: image vs carousel vs video vs article vs text
-- Post scatter plot: quadrant analysis (Stars / Viral-Shallow / Niche-Gold / Underperformers)
+- Post scatter plot: quadrant analysis (Stars / Viral-Shallow / Niche-Gold / Underperformers), plotted over a deeper pool of posts than just the top 10 shown in the table
 - Demographics: job titles, industries, seniority, company size, locations
 - Top 10 posts table: impressions, engagements, engagement rate, clickable links
 
@@ -67,6 +67,8 @@ Restart Claude Code, then trigger the skill by saying any of:
 3. Drop the `.xlsx` into your project folder (both `AggregateAnalytics_*` and older `Content_*` files are supported)
 
 > **The export is a rolling window — it only reaches back about 13 months.** The skill keeps a persistent `analytics_archive.json` and merges each new export *into* it, so history older than the window is never lost. **Keep every export you download:** once dates age out of LinkedIn's window, an old file may be your only copy of them. Re-run the skill whenever you have a fresh export and it accumulates rather than replaces.
+
+The export also includes a **Members reached** figure (unique people, distinct from raw impressions). Unlike impressions, reach isn't additive across overlapping export windows, so the dashboard shows it as a labelled snapshot ("members reached over [date range]") rather than folding it into the lifetime totals.
 
 ## Full walkthrough
 

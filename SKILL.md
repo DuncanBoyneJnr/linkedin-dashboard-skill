@@ -166,6 +166,7 @@ Use Python with openpyxl to read **every** `Content_*.xlsx` and `AggregateAnalyt
 - New-format files (`AggregateAnalytics_*`) store **all numbers as text strings** (`"6530"`, not `6530`). Coerce every numeric cell with a string-safe helper — do not call `int(cell)` directly or it will crash / misread.
 - New-format DEMOGRAPHICS percentages are strings like `"2%"` and `"< 1%"`. Strip `<` and `%`, then divide by 100. Do **not** gate on `isinstance(cell, (int, float))` — that silently zeros every new-format demographic.
 - New-format FOLLOWERS total snapshot reads `"Total followers on 6/5/2026"` (no colon). Extract the date with a regex, not `split(":")`.
+- DEMOGRAPHICS category names also changed: older exports use plural labels (`Job titles`, `Industries`, `Locations`, `Companies`), current exports use singular ones (`Job title`, `Industry`, `Location`, `Company`). Normalise both to one canonical form (pick a convention and stick to it) before storing — otherwise whichever categories don't match your hardcoded panel list silently disappear from the dashboard.
 
 **ENGAGEMENT sheet** (Date, Impressions, Engagements — daily rows):
 - Merge by date key. Where dates overlap across files or the archive, **keep the higher value**.
@@ -176,9 +177,14 @@ Use Python with openpyxl to read **every** `Content_*.xlsx` and `AggregateAnalyt
 
 **TOP POSTS sheet** (two tables in one sheet, separated by a blank column D — cols A–C by engagements, cols E–G by impressions):
 - Merge on post URL. Keep the highest engagement and impression values seen across files.
+- **Store the URL itself as a field on the merged record**, not only as the map key — the dashboard's clickable link column needs it downstream, and it's easy to build a pipeline that carries the numbers through but quietly drops the URL.
+- **Seed this list from the existing archive on every run**, the same as ENGAGEMENT and DEMOGRAPHICS. If it starts empty each time, a post that only appeared in an export file you've since deleted vanishes from the archive permanently — silently defeating the entire "accumulate, never replace" principle for this one sheet.
 
 **DEMOGRAPHICS sheet** (category, value, percentage):
-- Use the file with the widest date range.
+- Use the file with the **widest date range** — parse the two dates out of each filename and compare the actual span. Do **not** pick by sorting filenames alphabetically and taking the last one: `AggregateAnalytics_...` sorts before `Content_...` regardless of which file actually covers more days, so an alphabetical pick can silently select a one-week export over a full-year one.
+
+**DISCOVERY sheet** (`Impressions`, `Members reached`):
+- This is a reach snapshot for that export's own window, not a daily series. Reach is **not additive** across overlapping export windows — the same unique member can be counted in two overlapping exports — so don't date-merge it the way you do ENGAGEMENT. Take it from the same widest-window file you chose for DEMOGRAPHICS, and store the window string alongside the number. Never present it as if it were a lifetime total.
 
 **Never drop a date** that is in the archive but absent from the current export.
 
@@ -187,7 +193,7 @@ Write the merged output to **`analytics_archive.json`** (the persistent source o
 Then build derived datasets:
 - **Monthly aggregates**: sum impressions, engagements, new followers per month. Calculate engagement rate (engagements / impressions).
 - **Cumulative follower series**: anchor on the earliest total snapshot, reconstruct backwards and forwards from daily new follower data.
-- **analytics_full.json**: final output containing `daily`, `monthly`, `top_posts`, `demographics`, and `totals`.
+- **analytics_full.json**: final output containing `daily`, `monthly`, `top_posts` (top 10 for the table), `top_posts_scatter` (a deeper pool, e.g. top 50, for a denser quadrant plot), `demographics`, `reach` (`members_reached`, `window`, `frequency` = impressions ÷ members reached), and `totals`.
 
 ### 5b. Process the Apify posts JSON
 
@@ -227,6 +233,7 @@ The dashboard must include these panels:
 
 **Headline cards:**
 - Total impressions, total engagements (LinkedIn metric), current followers, new followers gained, average daily impressions, average engagement rate, total posts
+- Members reached and avg views per member (impressions ÷ members reached), from the `reach` block — label it with its own window (it's a snapshot, not a full-archive lifetime figure)
 
 **Monthly trend (tabbed):**
 - Tab 1: impressions (bars) + engagements (bars) + new followers (line) — dual y-axis
@@ -244,6 +251,7 @@ The dashboard must include these panels:
 
 **Post performance scatter (from Analytics top posts):**
 - X: impressions, Y: engagements
+- Plot the deeper `top_posts_scatter` pool, not just the 10 rows shown in the table below, so quadrant medians aren't skewed by a small sample
 - Four quadrants based on medians: Stars / Viral-Shallow / Niche-Gold / Underperformers
 - Hover tooltip with date and link to post
 
@@ -252,6 +260,7 @@ The dashboard must include these panels:
 
 **Top 10 posts table (from Analytics):**
 - Date, impressions, engagements, engagement rate, quadrant label, clickable link
+- The link needs the post's `url` field carried all the way through the pipeline (archive → `analytics_full.json` → dashboard payload). If any stage drops it, the column silently renders "—" for every row with no error to warn you.
 
 **Visual rules:**
 - Dark background `#0f1117`
